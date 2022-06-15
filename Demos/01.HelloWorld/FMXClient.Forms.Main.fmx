@@ -3,35 +3,35 @@ object MainForm: TMainForm
   Top = 0
   Caption = 'Hello World Client'
   ClientHeight = 480
-  ClientWidth = 640
+  ClientWidth = 779
   FormFactor.Width = 320
   FormFactor.Height = 480
   FormFactor.Devices = [Desktop]
   DesignerMasterStyle = 0
   object ToolBar1: TToolBar
-    Size.Width = 640.000000000000000000
+    Size.Width = 779.000000000000000000
     Size.Height = 40.000000000000000000
     Size.PlatformDefault = False
     TabOrder = 0
   end
   object MainTabControl: TTabControl
     Align = Client
-    Size.Width = 640.000000000000000000
+    Size.Width = 779.000000000000000000
     Size.Height = 440.000000000000000000
     Size.PlatformDefault = False
-    TabIndex = 0
+    TabIndex = 1
     TabOrder = 1
     TabPosition = PlatformDefault
     Sizes = (
-      640s
+      779s
       414s
-      640s
+      779s
       414s)
     object HelloWorldTabItem: TTabItem
       CustomIcon = <
         item
         end>
-      IsSelected = True
+      IsSelected = False
       Size.Width = 122.000000000000000000
       Size.Height = 26.000000000000000000
       Size.PlatformDefault = False
@@ -44,16 +44,16 @@ object MainForm: TMainForm
         Touch.InteractiveGestures = [Pan, LongTap, DoubleTap]
         DataDetectorTypes = []
         Align = Client
-        Size.Width = 640.000000000000000000
+        Size.Width = 779.000000000000000000
         Size.Height = 364.000000000000000000
         Size.PlatformDefault = False
         TabOrder = 0
-        Viewport.Width = 636.000000000000000000
+        Viewport.Width = 775.000000000000000000
         Viewport.Height = 360.000000000000000000
       end
       object Layout1: TLayout
         Align = Top
-        Size.Width = 640.000000000000000000
+        Size.Width = 779.000000000000000000
         Size.Height = 50.000000000000000000
         Size.PlatformDefault = False
         TabOrder = 1
@@ -69,7 +69,7 @@ object MainForm: TMainForm
       CustomIcon = <
         item
         end>
-      IsSelected = False
+      IsSelected = True
       Size.Width = 131.000000000000000000
       Size.Height = 26.000000000000000000
       Size.PlatformDefault = False
@@ -80,7 +80,7 @@ object MainForm: TMainForm
       ExplicitSize.cy = 24.000000000000000000
       object Layout2: TLayout
         Align = Top
-        Size.Width = 640.000000000000000000
+        Size.Width = 779.000000000000000000
         Size.Height = 50.000000000000000000
         Size.PlatformDefault = False
         TabOrder = 1
@@ -134,7 +134,7 @@ object MainForm: TMainForm
       object Layout3: TLayout
         Align = Top
         Position.Y = 50.000000000000000000
-        Size.Width = 640.000000000000000000
+        Size.Width = 779.000000000000000000
         Size.Height = 50.000000000000000000
         Size.PlatformDefault = False
         TabOrder = 0
@@ -188,9 +188,32 @@ object MainForm: TMainForm
       object btnPost: TButton
         Position.X = 24.000000000000000000
         Position.Y = 120.000000000000000000
+        Size.Width = 97.000000000000000000
+        Size.Height = 22.000000000000000000
+        Size.PlatformDefault = False
         TabOrder = 2
         Text = 'Post'
         OnClick = btnPostClick
+      end
+      object BtnGenericGET: TButton
+        Position.X = 144.000000000000000000
+        Position.Y = 118.000000000000000000
+        Size.Width = 97.000000000000000000
+        Size.Height = 22.000000000000000000
+        Size.PlatformDefault = False
+        TabOrder = 3
+        Text = 'Generic GET'
+        OnClick = BtnGenericGETClick
+      end
+      object BtnGenericPOST: TButton
+        Position.X = 264.000000000000000000
+        Position.Y = 118.000000000000000000
+        Size.Width = 97.000000000000000000
+        Size.Height = 22.000000000000000000
+        Size.PlatformDefault = False
+        TabOrder = 4
+        Text = 'Generic POST'
+        OnClick = BtnGenericPOSTClick
       end
     end
   end

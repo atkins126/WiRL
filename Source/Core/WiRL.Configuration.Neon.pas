@@ -14,7 +14,6 @@ interface
 uses
   System.SysUtils, System.Classes, System.Generics.Defaults,
 
-  WiRL.Core.Application,
   WiRL.Configuration.Core,
   Neon.Core.Persistence,
   Neon.Core.Types;
@@ -36,7 +35,7 @@ type
   end;
 
   [Implements(IWiRLConfigurationNeon)]
-  TWiRLConfigurationNeon = class(TWiRLConfigurationNRef, IWiRLConfigurationNeon)
+  TWiRLConfigurationNeon = class(TWiRLConfiguration, IWiRLConfigurationNeon)
   private
     FPrettyPrint: Boolean;
     FIgnoreFieldPrefix: Boolean;
@@ -47,7 +46,7 @@ type
     FMemberCase: TNeonCase;
     FMembers: TNeonMembersSet;
   public
-    constructor Create;
+    constructor Create; override;
     destructor Destroy; override;
 
     class function Default: IWiRLConfigurationNeon; static;
@@ -76,6 +75,7 @@ type
     property Visibility: TNeonVisibility read FVisibility write FVisibility;
     property IgnoreFieldPrefix: Boolean read FIgnoreFieldPrefix write FIgnoreFieldPrefix;
     property UseUTCDate: Boolean read FUseUTCDate write FUseUTCDate;
+ public
     property Serializers: TNeonSerializerRegistry read FSerializers write FSerializers;
   end;
 

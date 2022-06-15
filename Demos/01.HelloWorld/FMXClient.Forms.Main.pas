@@ -16,7 +16,12 @@ uses
   FMX.Types, FMX.Controls, FMX.Forms, FMX.Graphics, FMX.Dialogs, FMX.TabControl,
   FMX.StdCtrls, FMX.Layouts, FMX.ListBox, FMX.MultiView, FMX.Memo,
   FMX.Controls.Presentation, FMX.Edit, FMX.ScrollBox,
-  Generics.Collections;
+  Generics.Collections, System.Rtti, FMX.Grid.Style, FireDAC.Stan.Intf,
+  FireDAC.Stan.Option, FireDAC.Stan.Param, FireDAC.Stan.Error, FireDAC.DatS,
+  FireDAC.Phys.Intf, FireDAC.DApt.Intf, Data.DB, FireDAC.Comp.DataSet,
+  FireDAC.Comp.Client, FMX.Grid, FireDAC.Stan.StorageJSON, Data.Bind.EngExt,
+  Fmx.Bind.DBEngExt, Fmx.Bind.Grid, System.Bindings.Outputs, Fmx.Bind.Editors,
+  Data.Bind.Components, Data.Bind.Grid, Data.Bind.DBScope;
 
 type
   TMainForm = class(TForm)
@@ -40,10 +45,14 @@ type
     Edit4: TEdit;
     Label4: TLabel;
     btnPost: TButton;
+    BtnGenericGET: TButton;
+    BtnGenericPOST: TButton;
     procedure btnExecuteClick(Sender: TObject);
     procedure btnEchoClick(Sender: TObject);
     procedure btnReverseClick(Sender: TObject);
     procedure btnPostClick(Sender: TObject);
+    procedure BtnGenericGETClick(Sender: TObject);
+    procedure BtnGenericPOSTClick(Sender: TObject);
   private
     { Private declarations }
   public
@@ -62,7 +71,7 @@ uses
   WiRL.Core.Utils,
   WiRL.Rtti.Utils,
   WiRL.Client.Utils,
-  WiRL.Core.JSON;
+  WiRL.Core.JSON, Demo.Entities;
 
 procedure TMainForm.btnEchoClick(Sender: TObject);
 begin
@@ -74,41 +83,56 @@ begin
   Edit4.Text := MainDataModule.ReverseString(Edit3.Text);
 end;
 
-procedure TMainForm.btnPostClick(Sender: TObject);
+procedure TMainForm.BtnGenericGETClick(Sender: TObject);
 var
-  LArray: TJSONArray;
+  LPerson: TPerson;
 begin
-  LArray := TJSONArray.Create;
+  LPerson := MainDataModule.GetPerson(12);
   try
-    LArray.Add('Prova 1');
-    LArray.Add('Prova 2');
-    LArray.Add('Prova 3');
-
-    MainDataModule.PostExampleResource.POST(
-      procedure(AContent: TMemoryStream)
-      var
-        LWriter: TStreamWriter;
-      begin
-        LWriter := TStreamWriter.Create(AContent);
-        try
-          LWriter.Write(LArray.ToJSON);
-          AContent.Position := 0;
-        finally
-          LWriter.Free;
-        end;
-      end
-      ,
-      procedure (AResponse: TStream)
-      begin
-        AResponse.Position := 0;
-
-        ShowMessage('OK, ' + AResponse.Size.ToString() + ' bytes: ' + sLineBreak
-          + StreamToString(AResponse));
-      end
+    ShowMessage(
+      'Name: ' + LPerson.Name + sLineBreak +
+      'Age: ' + LPerson.Age.ToString + sLineBreak +
+      'Detail: ' + LPerson.Detail
     );
   finally
-    LArray.Free;
+    LPerson.Free;
   end;
+end;
+
+procedure TMainForm.BtnGenericPOSTClick(Sender: TObject);
+var
+  LOrderProposal: TOrderProposal;
+  LOrder: TOrder;
+begin
+  LOrderProposal := TOrderProposal.Create;
+  try
+    LOrderProposal.Article := 'WiRL';
+    LOrderProposal.Description := 'Delphi RESTful Library';
+    LOrderProposal.DueDate := Now;
+    LOrderProposal.Quantity := 42;
+
+    LOrder := MainDataModule.PostOrder(LOrderProposal);
+    try
+      ShowMessage(
+        'Id: ' + LOrder.ID.ToString + sLineBreak +
+        'Article: ' + LOrder.Article + sLineBreak +
+        'Description: ' + LOrder.Description + sLineBreak +
+        'DueDate: ' + DateTimeToStr(LOrder.DueDate)
+      );
+    finally
+      LOrder.Free;
+    end;
+  finally
+    LOrderProposal.Free;
+  end;
+end;
+
+procedure TMainForm.btnPostClick(Sender: TObject);
+var
+  LResponse: string;
+begin
+  LResponse := MainDataModule.PostStreamResource.POST<string, string>('Hello, World!');
+  ShowMessage(LResponse);
 end;
 
 procedure TMainForm.btnExecuteClick(Sender: TObject);

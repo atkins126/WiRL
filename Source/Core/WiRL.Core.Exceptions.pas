@@ -16,13 +16,31 @@ uses
   System.Rtti,
   System.Generics.Collections,
   WiRL.Rtti.Utils,
+  WiRL.Core.Classes,
   WiRL.Core.Singleton,
   WiRL.Core.JSON,
-  WiRL.Core.Context,
+  WiRL.Core.Context.Server,
   WiRL.http.Request,
   WiRL.http.Response;
 
 type
+  /// <entity>Error</entity>
+  TWebExceptionSchema = class
+  private
+    Fdata: TDictionary<string,string>;
+    Fexception: string;
+    Fmessage: string;
+    Fstatus: Integer;
+  public
+    constructor Create;
+    destructor Destroy; override;
+
+    property status: Integer read Fstatus write Fstatus;
+    property exception: string read Fexception write Fexception;
+    property message: string read Fmessage write Fmessage;
+    property data: TDictionary<string,string> read Fdata write Fdata;
+  end;
+
   Pair = record
   public
     Name: string;
@@ -45,8 +63,6 @@ type
     class function MakeValueArray(APair1, APair2, APair3: Pair): TExceptionValues; overload; static;
     class function AddValuePair(APairArray: TExceptionValues; APair: Pair): TExceptionValues;
   end;
-
-  EWiRLException = class(Exception);
 
   /// <summary>
   ///   This exception may be thrown by a resource method if a specific HTTP error response needs to be produced.
@@ -486,7 +502,7 @@ begin
 
   EWiRLWebApplicationException.BuildReponse(E, LErrorMediaType, AContext.Response);
   if (AContext.Response.StatusCode = 401) and (LAuthChallengeHeader <> '') then
-    AContext.Response.HeaderFields['WWW-Authenticate'] := LAuthChallengeHeader;
+    AContext.Response.WWWAuthenticate := LAuthChallengeHeader;
 
   if Assigned(LApplication) then
   begin
@@ -680,6 +696,19 @@ constructor StatusCodeAttribute.Create(AStatusCode: Integer);
 begin
   inherited Create;
   FStatusCode := AStatusCode;
+end;
+
+{ TWebExceptionSchema }
+
+constructor TWebExceptionSchema.Create;
+begin
+  fdata := TDictionary<string,string>.Create;
+end;
+
+destructor TWebExceptionSchema.Destroy;
+begin
+  fdata.Free;
+  inherited;
 end;
 
 end.
