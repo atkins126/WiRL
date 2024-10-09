@@ -126,7 +126,7 @@ begin
     ResponseLabel.Font.Color := clBlack;
 
   ResponseLabel.Caption := IntToStr(AResponse.StatusCode) + ' - ' + AResponse.StatusText;
-  MemoResponse.Text := AResponse.Content;
+  MemoResponse.Text := AResponse.Content.AsType<string>;
 end;
 
 procedure TWiRLResourceRunnerForm.ButtonAddHeaderClick(Sender: TObject);
@@ -209,7 +209,7 @@ var
   LEditorForm: TWiRLResourceRunnerForm;
 begin
   if not Assigned(AResource) then
-    raise Exception.Create('WiRLResource needed');
+    raise EWiRLClientException.Create('WiRLResource needed');
 
   LEditorForm := TWiRLResourceRunnerForm.Create(nil);
   try
@@ -253,10 +253,10 @@ begin
   try
     LObject := nil;
     if not Assigned(FResource.Application) then
-      raise Exception.Create('Application non defined');
+      raise EWiRLClientException.Create('Application non defined');
 
     if not Assigned(FResource.Client) then
-      raise Exception.Create('HttpClient non defined');
+      raise EWiRLClientException.Create('HttpClient non defined');
 
     try
       ConfigComponent;
@@ -268,7 +268,7 @@ begin
 
       if Assigned(LObject) then
       begin
-        FResource.GenericHttpRequest<string>(ComboBoxMethod.Text, MemoRequest.Text, LObject);
+        FResource.GenericHttpRequest<string, TObject>(ComboBoxMethod.Text, MemoRequest.Text, LObject);
       end
       else
       begin
@@ -277,8 +277,8 @@ begin
     except
       on E: EWiRLClientResourceException do
       begin
-        if Assigned(E.JsonResponse) then
-          MemoResponse.Text := E.JsonResponse.ToJSON
+        if Assigned(E.ResponseJson) then
+          MemoResponse.Text := E.ResponseJson.ToJSON
         else
           MemoResponse.Text := E.Message;
       end;

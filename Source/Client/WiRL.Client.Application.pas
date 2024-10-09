@@ -2,7 +2,7 @@
 {                                                                              }
 {       WiRL: RESTful Library for Delphi                                       }
 {                                                                              }
-{       Copyright (c) 2015-2021 WiRL Team                                      }
+{       Copyright (c) 2015-2023 WiRL Team                                      }
 {                                                                              }
 {       https://github.com/delphi-blocks/WiRL                                  }
 {                                                                              }
@@ -18,6 +18,7 @@ uses
   System.Contnrs, System.Types, System.TypInfo,
   WiRL.Configuration.Core,
   WiRL.Core.Classes,
+  WiRL.Core.Context,
   WiRL.Core.MessageBodyReader,
   WiRL.Core.MessageBodyWriter,
   WiRL.http.Client.Interfaces,
@@ -26,34 +27,7 @@ uses
   WiRL.http.Client;
 
 type
-  TSerializerCase = (scLowerCase, scUpperCase, scPascalCase, scCamelCase, scSnakeCase);
-  //TSerializerMemberType = (mtUnknown, mtProp, mtField, mtIndexed);
-  TSerializerMembers = (smStandard, smFields, smProperties);
-  TSerializerMembersSet = set of TSerializerMembers;
-  TSerializerVisibility = set of TMemberVisibility;
-
   TWiRLClientApplication = class;
-
-  TWiRLClientApplicationOptions = class(TPersistent)
-  private
-    FSerializerMembers: TSerializerMembersSet;
-    FUseUTCDate: Boolean;
-    FSerializerVisibility: TSerializerVisibility;
-    FSerializerCase: TSerializerCase;
-    FApplication: TWiRLClientApplication;
-    procedure SetSerializerCase(const Value: TSerializerCase);
-    procedure SetSerializerMembers(const Value: TSerializerMembersSet);
-    procedure SetSerializerVisibility(const Value: TSerializerVisibility);
-    procedure SetUseUTCDate(const Value: Boolean);
-  public
-    procedure Assign(ASource: TPersistent); override;
-    constructor Create(AApplication: TWiRLClientApplication);
-  published
-    property SerializerCase :TSerializerCase read FSerializerCase write SetSerializerCase default scPascalCase;
-    property SerializerMembers: TSerializerMembersSet read FSerializerMembers write SetSerializerMembers default [smStandard];
-    property SerializerVisibility: TSerializerVisibility read FSerializerVisibility write SetSerializerVisibility default [mvPublic, mvPublished];
-    property UseUTCDate: Boolean read FUseUTCDate write SetUseUTCDate default True;
-  end;
 
   TWiRLInvocation = record
   private
@@ -65,7 +39,13 @@ type
     function ContentType(const AContentType: string): TWiRLInvocation;
     function AcceptLanguage(const AAcceptLanguage: string): TWiRLInvocation;
     function Header(const AName, AValue: string): TWiRLInvocation;
-    function Authorization(const AValue: string): TWiRLInvocation;
+    function Authorization(const AValue: string): TWiRLInvocation; overload;
+    function AuthBasic(const AName, AValue: string): TWiRLInvocation; overload;
+    function AuthBearer(const AValue: string): TWiRLInvocation; overload;
+    function SetContentStream(AStream: TStream): TWiRLInvocation;
+    function DisableProtocolException: TWiRLInvocation;
+    function EnabledProtocolException: TWiRLInvocation;
+
     function QueryParam(const AName: string; const AValue: TValue): TWiRLInvocation; overload;
     function QueryParam<T>(const AName: string; const AValue: T): TWiRLInvocation; overload;
     function PathParam(const AName: string; const AValue: TValue): TWiRLInvocation; overload;
@@ -93,6 +73,8 @@ type
   [ComponentPlatformsAttribute(pidWin32 or pidWin64 or pidOSX32 or pidiOSSimulator or pidiOSDevice or pidAndroid)]
   {$ENDIF}
   TWiRLClientApplication = class(TComponent, IWiRLApplication)
+  private const
+    DEFAULT_APPNAME = 'app';
   private
     FAppName: string;
     FDefaultMediaType: string;
@@ -105,7 +87,6 @@ type
     FAppConfigurator: TAppConfigurator;
     FResources: TObjectList<TObject>;
     FFilterRegistry: TWiRLClientFilterRegistry;
-    FOptions: TWiRLClientApplicationOptions;
     FFilters: TStringList;
     FReaders: TStringList;
     FWriters: TStringList;
@@ -113,9 +94,11 @@ type
     procedure SetClient(const Value: TWiRLClient);
     function GetDefaultClient: TWiRLClient;
     function CheckFilterNameBinding(AClientResource: TObject; AAttribute: TCustomAttribute): Boolean;
-    procedure SetOptions(const Value: TWiRLClientApplicationOptions);
     function AppNameIsStored: Boolean;
     procedure RegistryNotification(Sender: TObject);
+//    procedure StreamToArray(AArray: TValue; AHeaders: IWiRLHeaders;
+//      AStream: TStream);
+    procedure ContextInjection(AInstance: TObject; AContext: TWiRLContextBase);
   protected
     function GetPath: string; virtual;
     function AddFilter(const AFilter: string): Boolean;
@@ -128,11 +111,16 @@ type
     // Handles the parent/child relationship for the designer
     procedure GetChildren(Proc: TGetChildProc; Root: TComponent); override;
   public
-    property Resources: TObjectList<TObject> read FResources;
-    procedure ApplyRequestFilter(AClientResource: TObject; const AHttpMethod: string; ARequestStream: TStream; out AResponse: IWiRLResponse);
-    procedure ApplyResponseFilter(AClientResource: TObject; const AHttpMethod: string; ARequestStream: TStream; AResponse: IWiRLResponse);
     constructor Create(AOwner: TComponent); override;
     destructor Destroy; override;
+  public
+    procedure ApplyRequestFilter(AClientResource: TObject; const AHttpMethod: string; ARequestStream: TStream; out AResponse: IWiRLResponse);
+    procedure ApplyResponseFilter(AClientResource: TObject; const AHttpMethod: string; ARequestStream: TStream; AResponse: IWiRLResponse);
+    procedure StreamToEntity<T>(AEntity: T; AHeaders: IWiRLHeaders; AStream: TStream; AContext: TWiRLContextBase);
+    function StreamToObject<T>(AHeaders: IWiRLHeaders; AStream: TStream; AContext: TWiRLContextBase): T; overload;
+    procedure StreamToObject(AObject: TObject; AHeaders: IWiRLHeaders; AStream: TStream; AContext: TWiRLContextBase); overload;
+
+    property Resources: TObjectList<TObject> read FResources;
   public
     { IWiRLApplication }
     function SetWriters(const AWriters: TArray<string>): IWiRLApplication; overload;
@@ -173,7 +161,6 @@ type
     property Filters: TStringList read FFilters write SetDesignFilters;
     property Readers: TStringList read FReaders write SetDesignReaders;
     property Writers: TStringList read FWriters write SetDesignWriters;
-    property Options: TWiRLClientApplicationOptions read FOptions write SetOptions;
   end;
 
   TAppConfiguratorImpl = class(TAppConfigurator)
@@ -198,10 +185,12 @@ uses
   WiRL.Client.Resource,
   WiRL.Core.Utils,
   WiRL.Core.Converter,
-  WiRL.http.URL;
+  WiRL.Core.Injection,
+  WiRL.http.URL,
+  WiRL.http.Accept.MediaType;
 
 type
-  TWiRLResourceWrapper = class(TInterfacedObject, IWiRLInvocation)
+  TWiRLResourceProxy = class(TInterfacedObject, IWiRLInvocation)
   private
     FApp: TWiRLClientApplication;
     FResource: TWiRLClientCustomResource;
@@ -214,24 +203,20 @@ type
     procedure AcceptLanguage(const AAcceptLanguage: string);
     procedure QueryParam(const AName: string; const AValue: TValue);
     procedure PathParam(const AName: string; const AValue: TValue);
+    procedure SetContentStream(AStream: TStream);
 
     constructor Create(AApplication: TWiRLClientApplication);
     destructor Destroy; override;
   end;
 
-const
-  DefaultAppName = 'app';
-
 { TWiRLClientApplication }
 
-function TWiRLClientApplication.AddApplication(
-  const ABasePath: string): IWiRLApplication;
+function TWiRLClientApplication.AddApplication(const ABasePath: string): IWiRLApplication;
 begin
-  raise EWiRLException.CreateFmt('Method not found for class [%s]', [Self.ClassName]);
+  raise EWiRLException.CreateFmt('Method "AddApplication" not found for class [%s]', [Self.ClassName]);
 end;
 
-function TWiRLClientApplication.AddConfiguration(
-  const AConfiguration: TWiRLConfiguration): IWiRLApplication;
+function TWiRLClientApplication.AddConfiguration(const AConfiguration: TWiRLConfiguration): IWiRLApplication;
 begin
   FConfigRegistry.Add(AConfiguration);
   Result := Self;
@@ -381,7 +366,7 @@ end;
 
 function TWiRLClientApplication.AppNameIsStored: Boolean;
 begin
-  Result := FAppName <> DefaultAppName;
+  Result := FAppName <> DEFAULT_APPNAME;
 end;
 
 function TWiRLClientApplication.CheckFilterNameBinding(AClientResource: TObject;
@@ -400,7 +385,6 @@ end;
 constructor TWiRLClientApplication.Create(AOwner: TComponent);
 begin
   inherited;
-  FOptions := TWiRLClientApplicationOptions.Create(Self);
   FFilters := TStringList.Create;
   FFilters.OnChange := RegistryNotification;
   FReaders := TStringList.Create;
@@ -419,7 +403,7 @@ begin
   FResources := TObjectList<TObject>.Create;
 
   FDefaultMediaType := 'application/json';
-  FAppName := DefaultAppName;
+  FAppName := DEFAULT_APPNAME;
   if TWiRLComponentHelper.IsDesigning(Self) then
     FClient := TWiRLComponentHelper.FindDefault<TWiRLClient>(Self);
 
@@ -432,7 +416,6 @@ end;
 
 destructor TWiRLClientApplication.Destroy;
 begin
-  FOptions.Free;
   FFilters.Free;
   FReaders.Free;
   FWriters.Free;
@@ -452,8 +435,7 @@ begin
   Result := FAppConfigurator;
 end;
 
-procedure TWiRLClientApplication.GetChildren(Proc: TGetChildProc;
-  Root: TComponent);
+procedure TWiRLClientApplication.GetChildren(Proc: TGetChildProc; Root: TComponent);
 var
   LResource: TObject;
 begin
@@ -517,8 +499,7 @@ begin
   Result := FClient = FDefaultClient;
 end;
 
-procedure TWiRLClientApplication.Notification(AComponent: TComponent;
-  Operation: TOperation);
+procedure TWiRLClientApplication.Notification(AComponent: TComponent; Operation: TOperation);
 begin
   inherited;
   if Operation = opRemove then
@@ -551,8 +532,7 @@ begin
   end;
 end;
 
-function TWiRLClientApplication.Resource(
-  const AUrl: string): TWiRLInvocation;
+function TWiRLClientApplication.Resource(const AUrl: string): TWiRLInvocation;
 begin
   Result := TWiRLInvocation.Create(Self);
   Result.Target(AUrl);
@@ -567,16 +547,15 @@ begin
   Result := Self;
 end;
 
-function TWiRLClientApplication.SetAppName(
-  const AAppName: string): IWiRLApplication;
+function TWiRLClientApplication.SetAppName(const AAppName: string): IWiRLApplication;
 begin
-  raise EWiRLException.CreateFmt('Method not found for class [%s]', [Self.ClassName]);
+  FAppName := AAppName;
+  Result := Self;
 end;
 
-function TWiRLClientApplication.SetBasePath(
-  const ABasePath: string): IWiRLApplication;
+function TWiRLClientApplication.SetBasePath(const ABasePath: string): IWiRLApplication;
 begin
-  raise EWiRLException.CreateFmt('Method not found for class [%s]', [Self.ClassName]);
+  raise EWiRLException.CreateFmt('Method "SetBasePath" not found for class [%s]', [Self.ClassName]);
 end;
 
 procedure TWiRLClientApplication.SetClient(const Value: TWiRLClient);
@@ -613,91 +592,162 @@ begin
   end;
 end;
 
-function TWiRLClientApplication.SetErrorMediaType(
-  const AMediaType: string): IWiRLApplication;
+function TWiRLClientApplication.SetErrorMediaType(const AMediaType: string): IWiRLApplication;
 begin
-  raise EWiRLException.CreateFmt('Method not found for class [%s]', [Self.ClassName]);
+  raise EWiRLException.CreateFmt('Method "SetErrorMediaType" not found for class [%s]', [Self.ClassName]);
 end;
 
-function TWiRLClientApplication.SetFilters(
-  AFilters: TStrings): IWiRLApplication;
-var
-  LFilterName: string;
+function TWiRLClientApplication.SetFilters(AFilters: TStrings): IWiRLApplication;
 begin
-  for LFilterName in AFilters do
-    SetFilters(LFilterName);
-  Result := Self;
+  Result := SetFilters(AFilters.ToStringArray);
 end;
 
-function TWiRLClientApplication.SetFilters(
-  const AFilters: string): IWiRLApplication;
+function TWiRLClientApplication.SetFilters(const AFilters: string): IWiRLApplication;
 begin
-  SetFilters(AFilters.Split([',']));
-  Result := Self;
+  Result := SetFilters(AFilters.Split([',']));
 end;
 
-procedure TWiRLClientApplication.SetOptions(
-  const Value: TWiRLClientApplicationOptions);
-begin
-  if FOptions <> Value then
-  begin
-    FOptions.Assign(Value);
-  end;
-end;
-
-function TWiRLClientApplication.SetFilters(
-  const AFilters: System.TArray<System.string>): IWiRLApplication;
+function TWiRLClientApplication.SetFilters(const AFilters: System.TArray<System.string>): IWiRLApplication;
 var
   LFilter: string;
 begin
-  for LFilter in AFilters do
-    Self.AddFilter(LFilter);
+  if Length(AFilters) = 0 then
+    FFilterRegistry.Clear
+  else
+    for LFilter in AFilters do
+      Self.AddFilter(LFilter);
+
   Result := Self;
 end;
 
 function TWiRLClientApplication.SetReaders(const AReaders: string): IWiRLApplication;
 begin
-  SetReaders(AReaders.Split([',']));
-  Result := Self;
+  Result := SetReaders(AReaders.Split([',']));
 end;
 
-function TWiRLClientApplication.SetReaders(
-  AReaders: TStrings): IWiRLApplication;
+function TWiRLClientApplication.SetReaders(AReaders: TStrings): IWiRLApplication;
+begin
+  Result := SetReaders(AReaders.ToStringArray);
+end;
+
+function TWiRLClientApplication.SetResources(const AResources: System.TArray<System.string>): IWiRLApplication;
+begin
+  raise EWiRLException.CreateFmt('Method "SetResources" not found for class [%s]', [Self.ClassName]);
+end;
+
+function TWiRLClientApplication.SetResources(const AResources: string): IWiRLApplication;
+begin
+  raise EWiRLException.CreateFmt('Method "SetResources" not found for class [%s]', [Self.ClassName]);
+end;
+
+function TWiRLClientApplication.SetSystemApp(ASystem: Boolean): IWiRLApplication;
+begin
+  raise EWiRLException.CreateFmt('Method "SetSystemApp" not found for class [%s]', [Self.ClassName]);
+end;
+
+function TWiRLClientApplication.SetWriters(AWriters: TStrings): IWiRLApplication;
+begin
+  Result := SetWriters(AWriters.ToStringArray);
+end;
+
+procedure TWiRLClientApplication.ContextInjection(AInstance: TObject; AContext: TWiRLContextBase);
+begin
+  TWiRLContextInjectionRegistry.Instance.
+    ContextInjection(AInstance, AContext);
+end;
+
+procedure TWiRLClientApplication.StreamToEntity<T>(AEntity: T;
+  AHeaders: IWiRLHeaders; AStream: TStream; AContext: TWiRLContextBase);
 var
-  LReader: string;
+  LValue: TValue;
 begin
-  for LReader in AReaders do
-    Self.AddReader(LReader);
-  Result := Self;
+  LValue := TValue.From<T>(AEntity);
+
+  if LValue.IsObject then
+    if LValue.AsObject is TStream then
+      LValue := AStream
+    else
+      StreamToObject(LValue.AsObject, AHeaders, AStream, AContext)
+//  else if LValue.IsArray then
+//    StreamToArray(LValue, AHeaders, AStream)
+  else
+    raise EWiRLClientException.Create('Not supported');
 end;
 
-function TWiRLClientApplication.SetResources(
-  const AResources: System.TArray<System.string>): IWiRLApplication;
-begin
-  raise EWiRLException.CreateFmt('Method not found for class [%s]', [Self.ClassName]);
-end;
-
-function TWiRLClientApplication.SetResources(
-  const AResources: string): IWiRLApplication;
-begin
-  raise EWiRLException.CreateFmt('Method not found for class [%s]', [Self.ClassName]);
-end;
-
-function TWiRLClientApplication.SetSystemApp(
-  ASystem: Boolean): IWiRLApplication;
-begin
-  raise EWiRLException.CreateFmt('Method not found for class [%s]', [Self.ClassName]);
-end;
-
-function TWiRLClientApplication.SetWriters(
-  AWriters: TStrings): IWiRLApplication;
+procedure TWiRLClientApplication.StreamToObject(AObject: TObject;
+  AHeaders: IWiRLHeaders; AStream: TStream; AContext: TWiRLContextBase);
 var
-  LWriter: string;
+  LType: TRttiType;
+  LMediaType: TMediaType;
+  LReader: IMessageBodyReader;
 begin
-  for LWriter in AWriters do
-    Self.AddWriter(LWriter);
-  Result := Self;
+  LType := TRttiHelper.Context.GetType(AObject.ClassInfo);
+  LMediaType := TMediaType.Create(AHeaders.Values[TWiRLHeader.CONTENT_TYPE]);
+  try
+    LReader := ReaderRegistry.FindReader(LType, [], LMediaType);
+    if not Assigned(LReader) then
+      raise EWiRLClientException.CreateFmt('Reader not found for [%s] content type: [%s]', [LType.Name, LMediaType.MediaType]);
+    ContextInjection(LReader as TObject, AContext);
+
+    LReader.ReadFrom(AObject, LType, LMediaType, AHeaders, AStream);
+  finally
+    LMediaType.Free;
+  end;
 end;
+
+function TWiRLClientApplication.StreamToObject<T>(AHeaders: IWiRLHeaders;
+  AStream: TStream; AContext: TWiRLContextBase): T;
+var
+  LType: TRttiType;
+  LMediaType: TMediaType;
+  LReader: IMessageBodyReader;
+  LValue: TValue;
+begin
+  LType := TRttiHelper.Context.GetType(TypeInfo(T));
+  if TRttiHelper.IsObjectOfType<TStream>(LType) then
+    Exit(TRttiHelper.ObjectAsType<T>(AStream));
+
+  LMediaType := TMediaType.Create(AHeaders.ContentType);
+  try
+    LReader := ReaderRegistry.FindReader(LType, [], LMediaType);
+    if not Assigned(LReader) then
+      raise EWiRLClientException.CreateFmt('Reader not found for [%s] content type: [%s]', [LType.Name, LMediaType.MediaType]);
+    ContextInjection(LReader as TObject, AContext);
+
+    LValue := LReader.ReadFrom(LType, LMediaType, AHeaders, AStream);
+    Result := LValue.AsType<T>;
+  finally
+    LMediaType.Free;
+  end;
+end;
+
+{
+procedure TWiRLClientApplication.StreamToArray(AArray: TValue;
+  AHeaders: IWiRLHeaders; AStream: TStream);
+var
+  LList: TDataSetList;
+  LIndex: Integer;
+  LItem: TValue;
+begin
+  LList := TDataSetList.Create(False);
+  try
+    for LIndex := 0 to AArray.GetArrayLength - 1 do
+    begin
+      LItem := AArray.GetArrayElement(LIndex);
+      if not LItem.IsObject then
+        raise EWiRLClientException.Create('Array of primitive type not supported');
+
+      if not (LItem.AsObject is TDataSet) then
+        raise EWiRLClientException.Create('Error Message');
+
+      LList.Add(TDataSet(LItem.AsObject));
+    end;
+    StreamToObject(LList, AHeaders, AStream);
+  finally
+    LList.Free;
+  end;
+end;
+}
 
 function TWiRLClientApplication.SetWriters(const AWriters: TArray<string>): IWiRLApplication;
 var
@@ -710,8 +760,7 @@ end;
 
 function TWiRLClientApplication.SetWriters(const AWriters: string): IWiRLApplication;
 begin
-  SetWriters(AWriters.Split([',']));
-  Result := Self;
+  Result := SetWriters(AWriters.Split([',']));
 end;
 
 { TAppConfiguratorImpl }
@@ -722,26 +771,34 @@ begin
   FApplication := AApplication;
 end;
 
-function TAppConfiguratorImpl.GetConfigByInterfaceRef(
-  AInterfaceRef: TGUID): IInterface;
+function TAppConfiguratorImpl.GetConfigByInterfaceRef(AInterfaceRef: TGUID): IInterface;
 begin
   Result := FApplication.GetConfigByInterfaceRef(AInterfaceRef);
 end;
 
 { TWiRLInvocation }
 
-function TWiRLInvocation.Accept(
-  const AAccept: string): TWiRLInvocation;
+function TWiRLInvocation.Accept(const AAccept: string): TWiRLInvocation;
 begin
   FWiRLInvocation.Accept(AAccept);
   Result := Self;
 end;
 
-function TWiRLInvocation.AcceptLanguage(
-  const AAcceptLanguage: string): TWiRLInvocation;
+function TWiRLInvocation.AcceptLanguage(const AAcceptLanguage: string): TWiRLInvocation;
 begin
-//  Result := (FWiRLInvocation.Resource as TWiRLClientCustomResource).Get<T>;
-  Result := Header('Accept-Language', AAcceptLanguage);
+  Header('Accept-Language', AAcceptLanguage);
+  Result := Self;
+end;
+
+function TWiRLInvocation.AuthBasic(const AName, AValue: string): TWiRLInvocation;
+begin
+  Header('Authorization', TBasicAuth.Create(AName, AValue));
+  Result := Self;
+end;
+
+function TWiRLInvocation.AuthBearer(const AValue: string): TWiRLInvocation;
+begin
+  Header('Authorization', TBearerAuth.Create(AValue));
   Result := Self;
 end;
 
@@ -751,8 +808,7 @@ begin
   Result := Self;
 end;
 
-function TWiRLInvocation.ContentType(
-  const AContentType: string): TWiRLInvocation;
+function TWiRLInvocation.ContentType(const AContentType: string): TWiRLInvocation;
 begin
   FWiRLInvocation.ContentType(AContentType);
   Result := Self;
@@ -760,7 +816,7 @@ end;
 
 constructor TWiRLInvocation.Create(AApplication: TWiRLClientApplication);
 begin
-  FWiRLInvocation := TWiRLResourceWrapper.Create(AApplication);
+  FWiRLInvocation := TWiRLResourceProxy.Create(AApplication);
 end;
 
 procedure TWiRLInvocation.Delete(AResponseEntity: TObject);
@@ -771,6 +827,18 @@ end;
 function TWiRLInvocation.Delete<T>: T;
 begin
   Result := (FWiRLInvocation.Resource as TWiRLClientCustomResource).Delete<T>;
+end;
+
+function TWiRLInvocation.DisableProtocolException: TWiRLInvocation;
+begin
+  (FWiRLInvocation.Resource as TWiRLClientCustomResource).DisableProtocolException := True;
+  Result := Self;
+end;
+
+function TWiRLInvocation.EnabledProtocolException: TWiRLInvocation;
+begin
+  (FWiRLInvocation.Resource as TWiRLClientCustomResource).DisableProtocolException := False;
+  Result := Self;
 end;
 
 function TWiRLInvocation.Filters(const AFilters: TStringDynArray): TWiRLInvocation;
@@ -805,15 +873,13 @@ begin
   (FWiRLInvocation.Resource as TWiRLClientCustomResource).Patch(ARequestEntity, AResponseEntity);
 end;
 
-function TWiRLInvocation.PathParam(const AName: string;
-  const AValue: TValue): TWiRLInvocation;
+function TWiRLInvocation.PathParam(const AName: string; const AValue: TValue): TWiRLInvocation;
 begin
   FWiRLInvocation.PathParam(AName, AValue);
   Result := Self;
 end;
 
-function TWiRLInvocation.PathParam<T>(const AName: string;
-  const AValue: T): TWiRLInvocation;
+function TWiRLInvocation.PathParam<T>(const AName: string; const AValue: T): TWiRLInvocation;
 begin
   FWiRLInvocation.PathParam(AName, TValue.From<T>(AValue));
   Result := Self;
@@ -839,15 +905,19 @@ begin
   (FWiRLInvocation.Resource as TWiRLClientCustomResource).Put(ARequestEntity, AResponseEntity);
 end;
 
-function TWiRLInvocation.QueryParam<T>(const AName: string;
-  const AValue: T): TWiRLInvocation;
+function TWiRLInvocation.QueryParam<T>(const AName: string; const AValue: T): TWiRLInvocation;
 begin
   FWiRLInvocation.QueryParam(AName, TValue.From<T>(AValue));
   Result := Self;
 end;
 
-function TWiRLInvocation.QueryParam(const AName: string;
-  const AValue: TValue): TWiRLInvocation;
+function TWiRLInvocation.SetContentStream(AStream: TStream): TWiRLInvocation;
+begin
+  FWiRLInvocation.SetContentStream(AStream);
+  Result := Self;
+end;
+
+function TWiRLInvocation.QueryParam(const AName: string; const AValue: TValue): TWiRLInvocation;
 begin
   FWiRLInvocation.QueryParam(AName, AValue);
   Result := Self;
@@ -859,50 +929,50 @@ begin
   Result := Self;
 end;
 
-{ TWiRLResourceWrapper }
+{ TWiRLResourceProxy }
 
-procedure TWiRLResourceWrapper.Accept(const AAccept: string);
+procedure TWiRLResourceProxy.Accept(const AAccept: string);
 begin
   if not Assigned(FResource) then
     raise EWiRLClientException.Create('Resource not found');
   FResource.Headers.Accept := AAccept;
 end;
 
-procedure TWiRLResourceWrapper.AcceptLanguage(const AAcceptLanguage: string);
+procedure TWiRLResourceProxy.AcceptLanguage(const AAcceptLanguage: string);
 begin
   if not Assigned(FResource) then
     raise EWiRLClientException.Create('Resource not found');
   // FResource.SpecificAcceptLanguage := AAccept;
 end;
 
-procedure TWiRLResourceWrapper.ContentType(const AContentType: string);
+procedure TWiRLResourceProxy.ContentType(const AContentType: string);
 begin
   if not Assigned(FResource) then
     raise EWiRLClientException.Create('Resource not found');
   FResource.Headers.ContentType := AContentType;
 end;
 
-constructor TWiRLResourceWrapper.Create(AApplication: TWiRLClientApplication);
+constructor TWiRLResourceProxy.Create(AApplication: TWiRLClientApplication);
 begin
   inherited Create;
   FApp := AApplication;
   FResource := nil;
 end;
 
-destructor TWiRLResourceWrapper.Destroy;
+destructor TWiRLResourceProxy.Destroy;
 begin
   FResource.Free;
   inherited;
 end;
 
-function TWiRLResourceWrapper.GetResource: TObject;
+function TWiRLResourceProxy.GetResource: TObject;
 begin
   if not Assigned(FResource) then
     raise EWiRLClientException.Create('Resource not found');
   Result := FResource;
 end;
 
-procedure TWiRLResourceWrapper.PathParam(const AName: string; const AValue: TValue);
+procedure TWiRLResourceProxy.PathParam(const AName: string; const AValue: TValue);
 begin
   if not Assigned(FResource) then
     raise EWiRLClientException.Create('Resource not found');
@@ -910,14 +980,19 @@ begin
   FResource.PathParam(AName, AValue);
 end;
 
-procedure TWiRLResourceWrapper.QueryParam(const AName: string; const AValue: TValue);
+procedure TWiRLResourceProxy.QueryParam(const AName: string; const AValue: TValue);
 begin
   if not Assigned(FResource) then
     raise EWiRLClientException.Create('Resource not found');
   FResource.QueryParam(AName, AValue);
 end;
 
-procedure TWiRLResourceWrapper.Target(const AUrl: string);
+procedure TWiRLResourceProxy.SetContentStream(AStream: TStream);
+begin
+  FResource.SetContentStream(AStream);
+end;
+
+procedure TWiRLResourceProxy.Target(const AUrl: string);
 begin
   if not Assigned(FResource) then
   begin
@@ -925,84 +1000,6 @@ begin
     FResource.Application := FApp;
   end;
   FResource.Resource := AUrl;
-end;
-
-{ TWiRLClientApplicationOptions }
-
-procedure TWiRLClientApplicationOptions.Assign(ASource: TPersistent);
-var
-  LSourceOptions: TWiRLClientApplicationOptions;
-begin
-  inherited;
-  if ASource is TWiRLClientApplicationOptions then
-  begin
-    LSourceOptions := TWiRLClientApplicationOptions(ASource);
-    FSerializerMembers := LSourceOptions.SerializerMembers;
-    FSerializerVisibility := LSourceOptions.SerializerVisibility;
-    FSerializerCase := LSourceOptions.SerializerCase;
-    FUseUTCDate := LSourceOptions.UseUTCDate;
-  end;
-end;
-
-constructor TWiRLClientApplicationOptions.Create(AApplication: TWiRLClientApplication);
-begin
-  inherited Create;
-  FApplication := AApplication;
-  FSerializerCase := scPascalCase;
-  FSerializerMembers := [smStandard];
-  FSerializerVisibility := [mvPublic, mvPublished];
-  FUseUTCDate := True;
-end;
-
-procedure TWiRLClientApplicationOptions.SetSerializerCase(
-  const Value: TSerializerCase);
-var
-  LNeonCase: TNeonCase;
-begin
-  FSerializerCase := Value;
-  LNeonCase := TNeonCase.PascalCase;
-  case FSerializerCase of
-    scLowerCase: LNeonCase := TNeonCase.LowerCase;
-    scUpperCase: LNeonCase := TNeonCase.UpperCase;
-    scPascalCase: LNeonCase := TNeonCase.PascalCase;
-    scCamelCase: LNeonCase := TNeonCase.CamelCase;
-    scSnakeCase: LNeonCase := TNeonCase.SnakeCase;
-  end;
-
-  FApplication.Plugin.Configure<IWiRLConfigurationNeon>.SetMemberCase(LNeonCase);
-end;
-
-procedure TWiRLClientApplicationOptions.SetSerializerMembers(
-  const Value: TSerializerMembersSet);
-var
-  LMembers: TNeonMembersSet;
-begin
-  FSerializerMembers := Value;
-  LMembers := [];
-  if smStandard in FSerializerMembers then
-    LMembers := [TNeonMembers.Standard];
-  if smFields in FSerializerMembers then
-    LMembers := [TNeonMembers.Fields];
-  if smProperties in FSerializerMembers then
-    LMembers := [TNeonMembers.Properties];
-
-  FApplication.Plugin.Configure<IWiRLConfigurationNeon>.SetMembers(LMembers);
-end;
-
-procedure TWiRLClientApplicationOptions.SetSerializerVisibility(
-  const Value: TSerializerVisibility);
-var
-  LVisibility: TNeonVisibility;
-begin
-  FSerializerVisibility := Value;
-  LVisibility := Value;
-  FApplication.Plugin.Configure<IWiRLConfigurationNeon>.SetVisibility(LVisibility);
-end;
-
-procedure TWiRLClientApplicationOptions.SetUseUTCDate(const Value: Boolean);
-begin
-  FUseUTCDate := Value;
-  FApplication.Plugin.Configure<IWiRLConfigurationNeon>.SetUseUTCDate(Value);
 end;
 
 end.

@@ -11,8 +11,8 @@ uses
   WiRL.Core.Attributes,
   WiRL.Core.Metadata,
   WiRL.Core.Registry,
-  WiRL.Core.Engine,
   WiRL.Core.Context,
+  WiRL.Engine.REST,
   WiRL.http.Server,
   WiRL.http.Response,
   WiRL.http.Request,
@@ -43,7 +43,7 @@ type
   TPerson = class
   private
     FName: string;
-  published
+  public
     property Name: string read FName write FName;
   end;
 
@@ -66,7 +66,7 @@ begin
   FServer := TWiRLServer.Create(nil);
 
   // Engine configuration
-  FServer.AddEngine<TWiRLEngine>('/rest')
+  FServer.AddEngine<TWiRLRESTEngine>('/rest')
     .SetEngineName('WiRL Test Demo')
 
     .AddApplication('/app')
@@ -118,7 +118,7 @@ var
   LTempObj: TObject;
 begin
   LTempObj := TObject.Create;
-  //GC.AddGarbage(LTempObj);
+  GC.AddGarbage(LTempObj);
   Result := TPerson.Create;
   Result.Name := AName;
 end;

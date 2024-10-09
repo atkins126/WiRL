@@ -2,7 +2,7 @@
 {                                                                              }
 {       WiRL: RESTful Library for Delphi                                       }
 {                                                                              }
-{       Copyright (c) 2015-2021 WiRL Team                                      }
+{       Copyright (c) 2015-2023 WiRL Team                                      }
 {                                                                              }
 {       https://github.com/delphi-blocks/WiRL                                  }
 {                                                                              }
@@ -42,19 +42,16 @@ type
     FDocument: TOpenAPIDocument;
 
     FApplication: TWiRLApplication;
+    FAppNeonConfig: INeonConfiguration;
+
     FConfigurationOpenAPI: TWiRLConfigurationOpenAPI;
-    FConfigurationNeon: TWiRLConfigurationNeon;
-    //FConfigurationAuth: TWiRLConfigurationAuth;
+    FNeonConfiguration: INeonConfiguration;
     FSwaggerResource: string;
-
-    function GetNeonConfig: INeonConfiguration;
-
-    function TypeToSchemaJSON(AType: TRttiType): TJSONObject;
-    function ClassToSchemaJSON(AClass: TClass): TJSONObject;
 
     function AddOperation(AMethod: TWiRLProxyMethod; AOpenAPIPath: TOpenAPIPathItem; const ATagName: string): TOpenAPIOperation;
     procedure AddResource(AResource: TWiRLProxyResource);
     function CreateParameter(AParameter: TWiRLProxyParameter): TOpenAPIParameter;
+    procedure ClearDocument;
   protected
     constructor Create(AApplication: TWiRLApplication; const ASwaggerResource: string); overload;
     procedure ProcessXMLDoc;
@@ -78,9 +75,9 @@ uses
 function TOpenAPIv3Engine.Build: TJSONObject;
 var
   LRes: TWiRLProxyResource;
-  LSchema: TOpenAPISchema;
   LPair: TPair<string, TWiRLProxyResource>;
 begin
+  ClearDocument();
   ProcessXMLDoc();
 
   for LPair in FApplication.Proxy.Resources do
@@ -114,27 +111,42 @@ begin
     // Tags are a group (resource) of operations (methods)
     FDocument.AddTag(LRes.Name, LRes.Summary);
 
-    LSchema := FDocument.Components.AddSchema('Error');
-    LSchema.SetJSONObject(ClassToSchemaJSON(TWebExceptionSchema));
+    FDocument.Components.AddSchema('Error')
+      .WithNeonConfig(FAppNeonConfig)
+      .SetJSONFromClass(TWebExceptionSchema);
 
     AddResource(LRes);
   end;
-
-  Result := TNeon.ObjectToJSON(FDocument, GetNeonConfig) as TJSONObject;
+  Result := TNeon.ObjectToJSON(FDocument, FNeonConfiguration) as TJSONObject;
 end;
 
-function TOpenAPIv3Engine.ClassToSchemaJSON(AClass: TClass): TJSONObject;
+procedure TOpenAPIv3Engine.ClearDocument;
 begin
-  Result := TypeToSchemaJSON(TRttiHelper.Context.GetType(AClass));
+  FDocument.Paths.Clear;
+  FDocument.Components.Schemas.Clear;
+  FDocument.Components.Responses.Clear;
+  FDocument.Components.Parameters.Clear;
+  FDocument.Components.Examples.Clear;
+  FDocument.Components.RequestBodies.Clear;
+  FDocument.Components.Headers.Clear;
+  FDocument.Components.SecuritySchemes.Clear;
+  FDocument.Components.Links.Clear;
+  FDocument.Components.Callbacks.Clear;
+  FDocument.Security.Clear;
+  FDocument.Tags.Clear;
 end;
 
 constructor TOpenAPIv3Engine.Create(AApplication: TWiRLApplication; const ASwaggerResource: string);
 begin
   FSwaggerResource := ASwaggerResource;
   FApplication := AApplication;
-
-  FConfigurationNeon := FApplication.GetConfiguration<TWiRLConfigurationNeon>;
+  FAppNeonConfig := FApplication.GetConfiguration<TWiRLConfigurationNeon>.GetNeonConfig;
   FConfigurationOpenAPI := FApplication.GetConfiguration<TWiRLConfigurationOpenAPI>;
+
+  if Assigned(FConfigurationOpenAPI.NeonConfig) then
+    FNeonConfiguration := FConfigurationOpenAPI.NeonConfig
+  else
+    FNeonConfiguration := TOpenAPISerializer.GetNeonConfig;
 
   FDocument := FConfigurationOpenAPI.Document;
 end;
@@ -166,7 +178,7 @@ begin
 
     if LParam.Kind = TMethodParamType.Body then
     begin
-      LRequestBody := Result.AddRequestBody(LParam.Summary);
+      LRequestBody := Result.SetRequestBody(LParam.Summary);
 
       // Add Request's MediaTypes (if param is BodyParam)
       for LConsume in AMethod.Consumes do
@@ -178,12 +190,16 @@ begin
           begin
             FDocument.Components
               .AddSchema(LParam.Entity.Name)
-              .SetJSONObject(TypeToSchemaJSON(LParam.RttiParam.ParamType));
+              .WithNeonConfig(FAppNeonConfig)
+              .SetJSONFromType(LParam.RttiParam.ParamType);
           end;
           LMediaType.Schema.SetSchemaReference(LParam.Entity.Name);
         end
         else
-          LMediaType.Schema.SetJSONObject(TypeToSchemaJSON(LParam.RttiParam.ParamType));
+          LMediaType
+            .Schema
+            .WithNeonConfig(FAppNeonConfig)
+            .SetJSONFromType(LParam.RttiParam.ParamType);
       end;
 
       Continue;
@@ -227,11 +243,15 @@ begin
               begin
                 FDocument.Components
                   .AddSchema(AMethod.MethodResult.RttiType.Name)
-                  .SetJSONObject(TypeToSchemaJSON(AMethod.MethodResult.RttiType));
+                  .WithNeonConfig(FAppNeonConfig)
+                  .SetJSONFromType(AMethod.MethodResult.RttiType);
               end;
               LMediaType.Schema.SetSchemaReference(AMethod.MethodResult.Entity.Name);
             end;
-            LMediaType.Schema.SetJSONObject(TypeToSchemaJSON(AMethod.MethodResult.RttiType));
+            LMediaType
+              .Schema
+              .WithNeonConfig(FAppNeonConfig)
+              .SetJSONFromType(AMethod.MethodResult.RttiType);
           end;
         end;
         Redirection: ;
@@ -313,7 +333,10 @@ begin
       Result.Required := False;
 
     Result.Description := AParameter.Summary;
-    Result.Schema.SetJSONObject(TypeToSchemaJSON(AParameter.RttiParam.ParamType));
+    Result
+      .Schema
+      .WithNeonConfig(FAppNeonConfig)
+      .SetJSONFromType(AParameter.RttiParam.ParamType);
   end;
 end;
 
@@ -325,26 +348,9 @@ begin
   LEngine := TOpenAPIv3Engine.Create(AApplication, ASwaggerResource);
   try
     Result := LEngine.Build();
-
   finally
     LEngine.Free;
   end;
-end;
-
-function TOpenAPIv3Engine.GetNeonConfig: INeonConfiguration;
-begin
-  Result := TNeonConfiguration.Camel;
-
-  Result
-   .SetIgnoreFieldPrefix(True)
-   .SetUseUTCDate(True)
-   .SetPrettyPrint(True)
-   .GetSerializers
-     .RegisterSerializer(TGUIDSerializer)
-     .RegisterSerializer(TStreamSerializer)
-  ;
-
-  RegisterOpenAPISerializers(Result.GetSerializers);
 end;
 
 procedure TOpenAPIv3Engine.ProcessXMLDoc;
@@ -354,14 +360,6 @@ begin
   LContext.Proxy := FApplication.Proxy;
   LContext.XMLDocFolder := TWiRLTemplatePaths.Render(FConfigurationOpenAPI.FolderXMLDoc);
   TWiRLProxyEngineXMLDoc.Process(LContext);
-end;
-
-function TOpenAPIv3Engine.TypeToSchemaJSON(AType: TRttiType): TJSONObject;
-var
-  LConf: INeonConfiguration;
-begin
-  LConf := GetNeonConfig;
-  Result := TNeonSchemaGenerator.TypeToJSONSchema(AType, LConf);
 end;
 
 end.

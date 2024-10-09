@@ -2,7 +2,7 @@
 {                                                                              }
 {       WiRL: RESTful Library for Delphi                                       }
 {                                                                              }
-{       Copyright (c) 2015-2021 WiRL Team                                      }
+{       Copyright (c) 2015-2023 WiRL Team                                      }
 {                                                                              }
 {       https://github.com/delphi-blocks/WiRL                                  }
 {                                                                              }
@@ -91,7 +91,7 @@ begin
       AValue := GetContextObject(LEntry, AObject, AContext);
       if AValue.IsObject then  // Only object should be released
       begin
-        LContextOwned := not IsSigleton(AObject); // Singleton should'n be released
+        LContextOwned := not IsSigleton(AObject); // Singleton should not be released
         AContext.ContextData.Add(AValue.AsObject, LContextOwned);
       end;
       Exit(True);
@@ -122,7 +122,7 @@ begin
     Result := LContextHttpFactory.CreateContextObject(AObject, AContext as TWiRLContextHttp);
   end
   else
-    raise Exception.Create('Invalid context factory');
+    raise EWiRLServerException.Create('Invalid context factory');
 end;
 
 class function TWiRLContextInjectionRegistry.GetInstance: TWiRLContextInjectionRegistry;
@@ -159,11 +159,11 @@ begin
       LInstance := (TRttiHelper.CreateInstance(AFactoryClass));
 
       if not Supports(LInstance, IInterface, Result) then
-        raise Exception.Create('Interface IContextObjectFactory or IContextHttpFactory not implemented');
+        raise EWiRLServerException.Create('Interface IContextObjectFactory or IContextHttpFactory not implemented');
 
       if (not Supports(Result, IContextObjectFactory)) and
          (not Supports(Result, IContextHttpFactory)) then
-        raise Exception.Create('Interface IContextObjectFactory or IContextHttpFactory not implemented');
+        raise EWiRLServerException.Create('Interface IContextObjectFactory or IContextHttpFactory not implemented');
     end);
 end;
 

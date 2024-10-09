@@ -2,7 +2,7 @@
 {                                                                              }
 {       WiRL: RESTful Library for Delphi                                       }
 {                                                                              }
-{       Copyright (c) 2015-2019 WiRL Team                                      }
+{       Copyright (c) 2015-2023 WiRL Team                                      }
 {                                                                              }
 {       https://github.com/delphi-blocks/WiRL                                  }
 {                                                                              }
@@ -20,12 +20,28 @@ uses
 type
   TWiRLHttpMethod = (GET, HEAD, POST, PUT, PATCH, DELETE, OPTIONS, TRACE, CONNECT);
 
+  TWiRLResponseStatus = (
+    None,            // Undefined
+    Informational,   // 1xx
+    Success,         // 2xx
+    Redirect,        // 3xx
+    ClientError,     // 4xx
+    ServerError      // 5xx
+  );
+
   TWiRLHttpMethodHelper = record helper for TWiRLHttpMethod
   public
     class function ConvertFromString(const AMethod: string): TWiRLHttpMethod; static;
   public
     function ToString: string;
     procedure FromString(const AMethod: string);
+  end;
+
+  TWiRLResponseStatusHelper = record helper for TWiRLResponseStatus
+  public
+    class function FromStatusCode(AStatusCode: Integer): TWiRLResponseStatus; static;
+  public
+    function ToString: string;
   end;
 
   TWiRLHttpStatus = class
@@ -138,23 +154,6 @@ type
     property Application: TObject read FApplication write SetApplication;
   end;
 
-  TWiRLStreamWrapper = class(TStream)
-  private
-    FOwnsStream: Boolean;
-    FStream: TStream;
-  protected
-    function GetSize: Int64; override;
-    procedure SetSize(const NewSize: Int64); overload; override;
-  public
-    function Read(var Buffer; Count: Longint): Longint; overload; override;
-    function Write(const Buffer; Count: Longint): Longint; overload; override;
-    function Seek(Offset: Longint; Origin: Word): Longint; overload; override;
-
-    constructor Create(AStream: TStream; AOwnsStream: Boolean = False);
-    destructor Destroy; override;
-    property Stream: TStream read FStream;
-  end;
-
 var
   GetDefaultCharSetEncoding: TEncoding = nil;
 
@@ -179,7 +178,7 @@ function ContentStreamToString(const ACharset: string; AContentStream: TStream):
 var
   LEncoding: TEncoding;
   LBuffer: TBytes;
-  LPos :Int64;
+  LPos: Int64;
 begin
   Result := '';
   if Assigned(AContentStream) and (AContentStream.Size > 0) then
@@ -271,7 +270,7 @@ begin
   if LRes >= 0 then
     Result := TWiRLHttpMethod(LRes)
   else
-    raise Exception.Create('Error converting string type');
+    raise EWiRLConvertError.Create('Error converting string type');
 end;
 
 function TWiRLHttpMethodHelper.ToString: string;
@@ -313,45 +312,36 @@ begin
   Create(200, '', '');
 end;
 
-{ TWiRLStreamWrapper }
+{ TWiRLResponseStatusHelper }
 
-constructor TWiRLStreamWrapper.Create(AStream: TStream; AOwnsStream: Boolean);
+class function TWiRLResponseStatusHelper.FromStatusCode(
+  AStatusCode: Integer): TWiRLResponseStatus;
 begin
-  inherited Create;
-  FStream := AStream;
-  FOwnsStream := AOwnsStream;
+  if (AStatusCode >= 100) and (AStatusCode < 200) then
+    Result := TWiRLResponseStatus.Informational
+  else if AStatusCode < 300 then
+    Result := TWiRLResponseStatus.Success
+  else if AStatusCode < 400 then
+    Result := TWiRLResponseStatus.Redirect
+  else if AStatusCode < 500 then
+    Result := TWiRLResponseStatus.ClientError
+  else if AStatusCode < 600 then
+    Result := TWiRLResponseStatus.ServerError
+  else
+    Result := TWiRLResponseStatus.None;
 end;
 
-destructor TWiRLStreamWrapper.Destroy;
+function TWiRLResponseStatusHelper.ToString: string;
 begin
-  if FOwnsStream then
-    FStream.Free;
-  inherited;
-end;
-
-function TWiRLStreamWrapper.GetSize: Int64;
-begin
-  Result := FStream.Size;
-end;
-
-function TWiRLStreamWrapper.Read(var Buffer; Count: Longint): Longint;
-begin
-  Result := FStream.Read(Buffer, Count);
-end;
-
-function TWiRLStreamWrapper.Seek(Offset: Longint; Origin: Word): Longint;
-begin
-  Result := FStream.Seek(Offset, Origin);
-end;
-
-procedure TWiRLStreamWrapper.SetSize(const NewSize: Int64);
-begin
-  FStream.Size := NewSize;
-end;
-
-function TWiRLStreamWrapper.Write(const Buffer; Count: Longint): Longint;
-begin
-  Result := FStream.Write(Buffer, Count);
+  case Self of
+    TWiRLResponseStatus.Informational: Result := 'Informational';
+    TWiRLResponseStatus.Success: Result := 'Success';
+    TWiRLResponseStatus.Redirect: Result := 'Redirect';
+    TWiRLResponseStatus.ClientError: Result := 'ClientError';
+    TWiRLResponseStatus.ServerError: Result := 'ServerError';
+    else
+      Result := 'Undefined';
+  end;
 end;
 
 end.

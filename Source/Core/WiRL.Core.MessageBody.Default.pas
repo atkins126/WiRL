@@ -2,7 +2,7 @@
 {                                                                              }
 {       WiRL: RESTful Library for Delphi                                       }
 {                                                                              }
-{       Copyright (c) 2015-2019 WiRL Team                                      }
+{       Copyright (c) 2015-2023 WiRL Team                                      }
 {                                                                              }
 {       https://github.com/delphi-blocks/WiRL                                  }
 {                                                                              }
@@ -21,7 +21,6 @@ uses
   WiRL.http.Core,
   WiRL.http.Headers,
   WiRL.http.Request,
-//  WiRL.http.Response,
   WiRL.http.Accept.MediaType,
   WiRL.Core.Context,
   WiRL.Core.MessageBodyWriter,
@@ -149,13 +148,32 @@ type
     function ReadFrom(AType: TRttiType; AMediaType: TMediaType;
       AHeaders: IWiRLHeaders; AContentStream: TStream): TValue; override;
 
+    procedure ReadFrom(AObject: TObject; AType: TRttiType;
+      AMediaType: TMediaType; AHeaders: IWiRLHeaders; AContentStream: TStream);
+      override;
+
     procedure WriteTo(const AValue: TValue; const AAttributes: TAttributeArray;
       AMediaType: TMediaType; AHeaders: IWiRLHeaders; AContentStream: TStream); override;
   end;
 
+  /// <summary>
+  ///   This is the standard TMultipartFormData MessageBodyWriter
+  /// </summary>
+  {$IFNDEF HAS_NETHTTP_CLIENT}
+  [Produces(TMediaType.MULTIPART_FORM_DATA)]
+  TWiRLMultipartFormDataProvider = class(TMessageBodyProvider)
+  public
+    procedure WriteTo(const AValue: TValue; const AAttributes: TAttributeArray;
+      AMediaType: TMediaType; AHeaders: IWiRLHeaders; AContentStream: TStream); override;
+  end;
+  {$ENDIF}
+
 implementation
 
 uses
+  {$IFNDEF HAS_NETHTTP_CLIENT}
+  System.Net.Mime,
+  {$ENDIF}
   System.TypInfo,
   WiRL.Core.Utils,
   WiRL.Core.Converter,
@@ -369,10 +387,20 @@ end;
 function TWiRLStreamProvider.ReadFrom(AType: TRttiType; AMediaType: TMediaType;
       AHeaders: IWiRLHeaders; AContentStream: TStream): TValue;
 begin
-  if AContentStream is TGCMemoryStream then
-    Result := AContentStream
-  else
-   Result := TWiRLStreamWrapper.Create(AContentStream);
+  Result := AContentStream
+end;
+
+procedure TWiRLStreamProvider.ReadFrom(AObject: TObject; AType: TRttiType;
+  AMediaType: TMediaType; AHeaders: IWiRLHeaders; AContentStream: TStream);
+var
+  LStream: TStream;
+begin
+  LStream := AObject as TStream;
+  if Assigned(LStream) then
+  begin
+    AContentStream.Position := 0;
+    LStream.CopyFrom(AContentStream, AContentStream.Size);
+  end;
 end;
 
 procedure TWiRLStreamProvider.WriteTo(const AValue: TValue; const AAttributes: TAttributeArray;
@@ -512,6 +540,10 @@ begin
   TMessageBodyReaderRegistry.Instance.RegisterReader<TStream>(TWiRLStreamProvider);
   TMessageBodyWriterRegistry.Instance.RegisterWriter<TStream>(TWiRLStreamProvider, TMessageBodyWriterRegistry.AFFINITY_HIGH);
 
+  {$IFNDEF HAS_NETHTTP_CLIENT}
+  TMessageBodyWriterRegistry.Instance.RegisterWriter<TMultipartFormData>(TWiRLMultipartFormDataProvider, TMessageBodyWriterRegistry.AFFINITY_HIGH);
+  {$ENDIF}
+
 end;
 
 { TWiRLJSONProvider }
@@ -541,6 +573,24 @@ procedure TWiRLJSONProvider.WriteJSONToStream(AJSON: TJSONValue; AStream: TStrea
 begin
   TNeon.PrintToStream(AJSON, AStream, FConfigurationNeon.GetNeonConfig.GetPrettyPrint);
 end;
+
+{ TWiRLMultipartFormDataProvider }
+
+{$IFNDEF HAS_NETHTTP_CLIENT}
+procedure TWiRLMultipartFormDataProvider.WriteTo(const AValue: TValue;
+  const AAttributes: TAttributeArray; AMediaType: TMediaType;
+  AHeaders: IWiRLHeaders; AContentStream: TStream);
+var
+  LMultipartFormData: TMultipartFormData;
+begin
+  LMultipartFormData := AValue.AsObject as TMultipartFormData;
+  if Assigned(LMultipartFormData) then
+  begin
+    LMultipartFormData.Stream.Position := 0;
+    AContentStream.CopyFrom(LMultipartFormData.Stream, LMultipartFormData.Stream.Size);
+  end;
+end;
+{$ENDIF}
 
 initialization
   RegisterMessageBodyClasses;

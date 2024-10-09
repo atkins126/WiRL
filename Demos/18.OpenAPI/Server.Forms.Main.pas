@@ -2,7 +2,7 @@
 {                                                                              }
 {       WiRL: RESTful Library for Delphi                                       }
 {                                                                              }
-{       Copyright (c) 2015-2021 WiRL Team                                      }
+{       Copyright (c) 2015-2023 WiRL Team                                      }
 {                                                                              }
 {       https://github.com/delphi-blocks/WiRL                                  }
 {                                                                              }
@@ -21,9 +21,10 @@ uses
   WiRL.Configuration.CORS,
   WiRL.Configuration.OpenAPI,
   Neon.Core.Types,
+  Neon.Core.Persistence,
   WiRL.Core.Application,
-  WiRL.Core.Engine,
-  WiRL.http.FileSystemEngine,
+  WiRL.Engine.REST,
+  WiRL.Engine.FileSystem,
   WiRL.http.Server,
   WiRL.http.Server.Indy,
   OpenAPI.Model.Classes,
@@ -61,7 +62,7 @@ type
     APP_PATH = 'app';
     API_PATH = 'openapi';
   private
-    FEngine: TWiRLEngine;
+    FEngine: TWiRLRESTEngine;
     FRESTServer: TWiRLServer;
     function ConfigureOpenAPIDocument: TOpenAPIDocument;
   public
@@ -74,6 +75,7 @@ var
 implementation
 
 uses
+  System.TypInfo,
   WiRL.Core.Utils,
   WiRL.Core.Metadata.XMLDoc,
   WiRL.Core.OpenAPI.Resource;
@@ -149,7 +151,7 @@ begin
   LExtensionObject.AddPair('url', 'http://localhost:8080/rest/app/openapi/api-logo.png');
   LExtensionObject.AddPair('backgroundColor', '#FFFFFF');
   LExtensionObject.AddPair('altText', 'API Logo');
-  Result.Info.Extensions.AddPair('x-logo', LExtensionObject);
+  Result.Info.Extensions.Add('x-logo', LExtensionObject);
 end;
 
 procedure TMainForm.FormDestroy(Sender: TObject);
@@ -174,7 +176,7 @@ begin
   LDocument := ConfigureOpenAPIDocument;
 
   FEngine :=
-    FRESTServer.AddEngine<TWiRLEngine>(ENG_PATH)
+    FRESTServer.AddEngine<TWiRLRESTEngine>(ENG_PATH)
       .SetEngineName('RESTEngine');
 
   FEngine.AddApplication(APP_PATH)
@@ -182,11 +184,12 @@ begin
       // Test for namespaces
       .SetResources('Server.Resources.Demo.*')
       .SetResources('Server.Resources.Customer.*')
+      .SetResources('Server.Resources.OpenAPI')
       .SetFilters('*')
 
       .Plugin.Configure<IWiRLConfigurationNeon>
         .SetUseUTCDate(True)
-        .SetMemberCase(TNeonCase.CamelCase)
+        .SetMemberCase(TNeonCase.Unchanged)
       .ApplyConfig
 
       .Plugin.Configure<IWiRLConfigurationCORS>
@@ -196,12 +199,15 @@ begin
       .ApplyConfig
 
       .Plugin.Configure<IWiRLConfigurationOpenAPI>
+        // Set the OpenAPI resopource (in order to skip it in the documentation generation)
         .SetOpenAPIResource(TDocumentationResource)
+        // Set the Delphi XML documentation output directory (Project -> Options -> Compiler)
         .SetXMLDocFolder('{AppPath}\..\..\Docs')
-        .SetGUIDocFolder('{AppPath}\..\..\UI')
-        //.SetGUIDocFolder('{AppPath}\..\..\ReDoc')
-        // Set the OpenAPI document
+        // Set the folder where there is the html UI stuff
+        .SetGUIDocFolder('{AppPath}\..\..\UI') //.SetGUIDocFolder('{AppPath}\..\..\ReDoc')
+        // Set the (optional) API logo
         .SetAPILogo('api-logo.png')
+        // Set the OpenAPI document for the OpenAPI engine to fill
         .SetAPIDocument(LDocument)
       .ApplyConfig
   ;
